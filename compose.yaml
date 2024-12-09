@@ -1,0 +1,10 @@
+services:
+  subversion:
+    image: pyowonil/subversion:1.14.1
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./svn:/svn
+    ports:
+      - 3690:3690

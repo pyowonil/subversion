@@ -1,0 +1,138 @@
+#!/bin/sh
+set -eu
+
+# --- serve option ------------------------------------------------------------
+export SVN_ROOT="${SVN_ROOT:-/svn}"
+export SVN_LISTEN_PORT="${SVN_LISTEN_PORT:-3690}"
+
+# --- create option -----------------------------------------------------------
+export SVN_FS_TYPE="${SVN_FS_TYPE:-fsfs}"
+
+# --- function ----------------------------------------------------------------
+main() {
+  if ! is_runnable "${@}"; then
+    set -- svnserve "${@}"
+  fi
+
+  if [ "${1}" = "svnserve" ]; then
+    run "${@}"
+  else
+    exec "${@}"
+  fi
+}
+
+run() {
+  # empty root
+  if [ -z "$(ls -A "${SVN_ROOT}")" ]; then
+    echo "create ${SVN_FS_TYPE} type svn at ${SVN_ROOT}"
+    svnadmin create --fs-type "${SVN_FS_TYPE}" "${SVN_ROOT}"
+  fi
+
+  # parse
+  shift # remove command
+  while [ "${#}" -gt 0 ]; do
+    case "${1}" in
+      -d|--daemon)
+        shift
+        ;;
+      -r|--root)
+        SVN_ROOT="${2}"
+        shift 2
+        ;;
+      --listen-port)
+        SVN_LISTEN_PORT="${2}"
+        shift 2
+        ;;
+      --foreground)
+        shift
+        ;;
+      -h|--help)
+        exec svnserve --help
+        return
+        ;;
+      --version)
+        exec svnserve --version
+        return
+        ;;
+      *)
+        echo "ignore ${1} flag on container"
+        shift
+        ;;
+    esac
+  done
+
+  # execute
+  echo "serve ${SVN_ROOT} at ${SVN_LISTEN_PORT}"
+  exec svnserve \
+    --daemon \
+    --root "${SVN_ROOT}" \
+    --listen-port "${SVN_LISTEN_PORT}" \
+    --foreground
+}
+
+is_runnable() {
+  # empty args
+  if [ "${#}" -eq 0 ]; then
+    return 1
+  fi
+
+  # flag args
+  # c = arg[1][0] (c.f. arg[0] is entrypoint)
+  local c="$(echo "${1}" | cut -c1)"
+  if [ "${c}" = "-" ]; then
+    return 1
+  fi
+
+  return 0
+}
+
+is_enable() {
+  local v="$(echo "${1}" | tr "[:upper:]" "[:lower:]")"
+
+  case "${v}" in
+    enable|true|on|yes|y|1)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+has_arg() {
+  local a="${1}"
+  shift
+
+  while [ "${#}" -gt 0 ]; do
+    # WARN
+    #
+    # To check using `has_prefix` has some errors like below case.
+    # 
+    # `has_prefix "--config" "--configure"` -> return 0
+    #
+    # However, it looks work well at almost cases.
+    if has_prefix "${a}" "${1}"; then
+      return 0
+    fi
+    shift
+  done
+
+  return 1
+}
+
+has_prefix() {
+  local p="${1}"
+  local s="${2}"
+
+  # c = s[0:len(p)]
+  local c="$(echo "${s}" | cut -c1-${#p})"
+  if [ "${p}" = "${c}" ]; then
+    return 0
+  fi
+
+  return 1
+}
+
+# --- entrypoint --------------------------------------------------------------
+if [ "$(basename "${0}")" = "entrypoint" ]; then
+  main "${@}"
+fi
